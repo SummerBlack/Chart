@@ -6,6 +6,7 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+
     QLineSeries *sSeries = new QLineSeries();
     QLineSeries *tSeries = new QLineSeries();
 
@@ -16,9 +17,9 @@ int main(int argc, char *argv[])
 
     ChartForm w;
     w.allowUserEdit();
-    w.addSeries(sSeries, QString("sin"));
-    w.addSeries(tSeries, QString("cos"));
-//    MainWindow w;
+    w.addSeries(sSeries, QString("Sin"));
+    w.addSeries(tSeries, QString("Cos"));
+
     w.show();
 
     return a.exec();

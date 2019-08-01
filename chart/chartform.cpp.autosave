@@ -444,26 +444,6 @@ void ChartForm::on_sbx_lineWidth_valueChanged(int arg1)
     }
 }
 
-void ChartForm::on_btn_hideAll_clicked()
-{
-    for (int i = 0; i < mSeries.length(); ++i) {
-        QListWidgetItem *item = ui->dataListWidget->item(i);
-        ui->dataListWidget->setCurrentRow(i);
-        QCheckBox* box = (QCheckBox*)(ui->dataListWidget->itemWidget(item));
-        box->setChecked(false);
-    }
-}
-
-void ChartForm::on_btn_showAll_clicked()
-{
-    for (int i = 0; i < mSeries.length(); ++i) {
-        QListWidgetItem *item = ui->dataListWidget->item(i);
-        ui->dataListWidget->setCurrentRow(i);
-        QCheckBox* box = (QCheckBox*)(ui->dataListWidget->itemWidget(item));
-        box->setChecked(true);
-    }
-}
-
 void ChartForm::changeSeriesVisiable(int check)
 {
     int currentRow = ui->dataListWidget->currentRow();

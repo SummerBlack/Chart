@@ -125,10 +125,6 @@ private slots:
 
     void on_update_dataStyle(int id);
 
-    void on_btn_hideAll_clicked();
-
-    void on_btn_showAll_clicked();
-
     void changeSeriesVisiable(int check);
 
     void handleMarkerClicked();
@@ -138,6 +134,8 @@ private slots:
     void tooltip(QPointF point, bool state);
 
     void on_sbx_lineWidth_valueChanged(int arg1);
+
+    void on_groupBox_5_toggled(bool arg1);
 
 private:
     Ui::ChartForm *ui;

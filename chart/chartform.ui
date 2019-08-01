@@ -168,13 +168,16 @@
             <item row="1" column="0" colspan="2">
              <widget class="QGroupBox" name="gbx_xAxis">
               <property name="enabled">
-               <bool>false</bool>
+               <bool>true</bool>
               </property>
               <property name="title">
                <string>设置</string>
               </property>
               <property name="checkable">
                <bool>true</bool>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
               </property>
               <layout class="QFormLayout" name="formLayout">
                <item row="0" column="0">
@@ -252,13 +255,16 @@
             <item row="1" column="0" colspan="2">
              <widget class="QGroupBox" name="gbx_yAxis">
               <property name="enabled">
-               <bool>false</bool>
+               <bool>true</bool>
               </property>
               <property name="title">
                <string>设置</string>
               </property>
               <property name="checkable">
                <bool>true</bool>
+              </property>
+              <property name="checked">
+               <bool>false</bool>
               </property>
               <layout class="QFormLayout" name="formLayout_2">
                <item row="0" column="0">
@@ -337,7 +343,7 @@
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,1">
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="0,0,0,1">
+        <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="0,0,1">
          <item>
           <widget class="QGroupBox" name="groupBox_5">
            <property name="minimumSize">
@@ -354,6 +360,9 @@
            </property>
            <property name="title">
             <string>数据</string>
+           </property>
+           <property name="checkable">
+            <bool>true</bool>
            </property>
            <layout class="QVBoxLayout" name="verticalLayout_2">
             <item>
@@ -424,6 +433,9 @@
               <property name="text">
                <string>实线</string>
               </property>
+              <property name="checked">
+               <bool>true</bool>
+              </property>
              </widget>
             </item>
             <item row="4" column="0" colspan="2">
@@ -461,29 +473,6 @@
               </property>
               <property name="value">
                <number>1</number>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="groupBox_3">
-           <property name="title">
-            <string>显示</string>
-           </property>
-           <layout class="QVBoxLayout" name="verticalLayout_9">
-            <item>
-             <widget class="QPushButton" name="btn_hideAll">
-              <property name="text">
-               <string>隐藏所有</string>
-              </property>
-             </widget>
-            </item>
-            <item>
-             <widget class="QPushButton" name="btn_showAll">
-              <property name="text">
-               <string>显示所有</string>
               </property>
              </widget>
             </item>
