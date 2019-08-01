@@ -66,8 +66,7 @@ Qt 平台图表的封装，便于简单地向图表中添加曲线和对图表�
 ### 主题
 可以对图表的主题、动画以及Legend进行设置，当设置显示Legend还可以通过点击对应的legend显示或隐藏对应的曲线。<br>
 ![](https://github.com/SummerBlack/Chart/blob/master/theme.png) <br>
-
 ### 其他
-通过鼠标悬停，可以显示标签。<br>
+通过鼠标悬停，可以显示标签。通过鼠标右键，弹出菜单，可以选择编辑和删除。<br>
 ![](https://github.com/SummerBlack/Chart/blob/master/callout.png) <br>
 
