@@ -1,0 +1,6 @@
+<RCC>
+    <qresource prefix="/">
+        <file>chart/image/clean.png</file>
+        <file>chart/image/edit.png</file>
+    </qresource>
+</RCC>

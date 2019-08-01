@@ -1,0 +1,548 @@
+﻿#pragma execution_character_set("utf-8")
+
+#include "chartform.h"
+#include "ui_chartform.h"
+#include <QValueAxis>
+#include <QXYSeries>
+#include <QScatterSeries>
+#include <QFontDialog>
+#include <QColorDialog>
+#include <QDebug>
+#include <QMessageBox>
+#include <QLegendMarker>
+
+ChartForm::ChartForm(QWidget *parent) :
+    QWidget(parent),
+    ui(new Ui::ChartForm)
+{
+    ui->setupUi(this);
+    buttonGroup.addButton(ui->rbx_solid, 0);
+    buttonGroup.addButton(ui->rbx_dash, 1);
+    buttonGroup.addButton(ui->rbx_dashDot, 2);
+    buttonGroup.addButton(ui->rbx_dashDotDot, 3);
+
+    connect(&buttonGroup, QOverload<int>::of(&QButtonGroup::buttonClicked), this, &ChartForm::on_update_dataStyle);
+    // 创建图表
+    mChartView = new ChartView(createChart());
+    ui->chartWidget->layout()->addWidget(mChartView);
+
+    populateThemeBox();
+    populateAnimationBox();
+    populateLegendBox();
+
+    updateUI();
+
+    mChart->setAcceptHoverEvents(true);
+    setMouseTracking(true);
+    // 隐藏编辑区
+//    ui->tabWidget->hide();
+}
+
+ChartForm::~ChartForm()
+{
+    // 先清理，在delete ui
+    removeAllSeries();
+    delete ui;
+}
+
+void ChartForm::allowUserEdit()
+{
+    mEditEnable = true;
+    // 初始化右击菜单
+    mRightClickMenu = new QMenu(this);
+    mEditAction = new QAction(QIcon(":/chart/image/edit.png"), tr("Edit"), mRightClickMenu);
+    mClearAction = new QAction(QIcon(":/chart/image/clean.png"), tr("Clean"), mRightClickMenu);
+    mRightClickMenu->addAction(mEditAction);
+    mRightClickMenu->addAction(mClearAction);
+    connect(mEditAction, &QAction::triggered, this, &ChartForm::editChart);
+    connect(mClearAction, &QAction::triggered, this, &ChartForm::clearChart);
+}
+
+QChart *ChartForm::createChart()
+{
+    mChart = new Chart();
+
+    mChart->setAxisX(new QValueAxis);
+    mChart->setAxisY(new QValueAxis);
+    mChart->axisX()->setRange(-40, 40);
+    mChart->axisY()->setRange(0, 1);
+    //    mChart->setTitle("MTF");
+    mChart->legend()->hide();
+    //    // Add space to label to add space between labels and axis
+    //    // XY轴刻度显示4位小数
+    //    static_cast<QValueAxis *>(mChart->axisX())->setLabelFormat("%0.4f");
+    //    static_cast<QValueAxis *>(mChart->axisY())->setLabelFormat("%0.4f");
+
+    return mChart;
+}
+
+void ChartForm::addSeries(QXYSeries *series, QString &title)
+{
+    series->setName(title);
+    // 打开OpenGL加速
+//    series->setUseOpenGL(true);
+    mChart->addSeries(series);
+    connect(series, &QXYSeries::clicked, this, &ChartForm::keepCallout);
+    connect(series, &QXYSeries::hovered, this, &ChartForm::tooltip);
+    mChart->createDefaultAxes();
+    // 保存
+    mSeries.append(series);
+    // 显示
+    //    ui->dataListWidget->addItem(title);
+    QListWidgetItem* item = new QListWidgetItem(ui->dataListWidget);
+    item->setData(Qt::UserRole, title);
+    QCheckBox* box = new QCheckBox(title, this);
+    box->setChecked(true);
+    ui->dataListWidget->addItem(item);
+
+    ui->dataListWidget->setItemWidget(item, box);
+    connect(box, &QCheckBox::stateChanged, this, &ChartForm::changeSeriesVisiable);
+}
+
+void ChartForm::updateSeries(QXYSeries *series, QString &title)
+{
+    // 移除同名的
+    removeSeries(title);
+
+    series->setName(title);
+    // 开启opengl
+//    series->setUseOpenGL(true);
+    mChart->addSeries(series);
+    mChart->createDefaultAxes();
+
+    // 保存
+    mSeries.append(series);
+    // 显示
+//    ui->dataListWidget->addItem(title);
+    QListWidgetItem* item = new QListWidgetItem(ui->dataListWidget);
+    item->setData(Qt::UserRole, title);
+    QCheckBox* box = new QCheckBox(title, this);
+    box->setChecked(true);
+    ui->dataListWidget->addItem(item);
+
+    ui->dataListWidget->setItemWidget(item, box);
+    connect(box, &QCheckBox::stateChanged, this, &ChartForm::changeSeriesVisiable);
+}
+
+void ChartForm::removeSeries(QString &title)
+{
+    for (int i = 0; i < mSeries.length(); ++i) {
+        QXYSeries *series = mSeries[i];
+        if (series->name() == title) {
+            series->clear();
+            // 在内存中删除
+            mSeries.removeAt(i);
+            // 在显示中删除
+            QListWidgetItem* item = ui->dataListWidget->takeItem(i);
+            ui->dataListWidget->removeItemWidget(item);
+            delete item;
+            // 释放内存
+            delete series;
+            // series->deleteLater();
+            break;
+        }
+    }
+}
+
+void ChartForm::removeAllSeries()
+{
+    foreach (QXYSeries *series, mSeries) {
+        // 清除数据
+        series->clear();
+    }
+
+    qDeleteAll(mSeries);
+    mSeries.clear();
+    ui->dataListWidget->clear();
+}
+
+void ChartForm::connectMarkers()
+{
+    const auto markers = mChart->legend()->markers();
+    for (QLegendMarker *marker : markers) {
+        // Disconnect possible existing connection to avoid multiple connections
+        disconnect(marker, &QLegendMarker::clicked,
+                   this, &ChartForm::handleMarkerClicked);
+        connect(marker, &QLegendMarker::clicked, this, &ChartForm::handleMarkerClicked);
+    }
+}
+
+void ChartForm::disconnectMarkers()
+{
+    const auto markers = mChart->legend()->markers();
+    for (QLegendMarker *marker : markers) {
+        QObject::disconnect(marker, &QLegendMarker::clicked,
+                            this, &ChartForm::handleMarkerClicked);
+    }
+}
+
+void ChartForm::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::RightButton && mEditEnable) {
+        // 弹出右击菜单栏
+        mRightClickMenu->move(cursor().pos()); //让菜单显示的位置在鼠标的坐标上
+        mRightClickMenu->show();
+    }
+}
+
+void ChartForm::populateThemeBox()
+{
+    // add items to theme combobox
+    ui->themeComboBox->addItem("Light", QChart::ChartThemeLight);
+    ui->themeComboBox->addItem("Blue Cerulean", QChart::ChartThemeBlueCerulean);
+    ui->themeComboBox->addItem("Dark", QChart::ChartThemeDark);
+    ui->themeComboBox->addItem("Brown Sand", QChart::ChartThemeBrownSand);
+    ui->themeComboBox->addItem("Blue NCS", QChart::ChartThemeBlueNcs);
+    ui->themeComboBox->addItem("High Contrast", QChart::ChartThemeHighContrast);
+    ui->themeComboBox->addItem("Blue Icy", QChart::ChartThemeBlueIcy);
+    ui->themeComboBox->addItem("Qt", QChart::ChartThemeQt);
+}
+
+void ChartForm::populateAnimationBox()
+{
+    // add items to animation combobox
+    ui->animatedComboBox->addItem("No Animations", QChart::NoAnimation);
+    ui->animatedComboBox->addItem("GridAxis Animations", QChart::GridAxisAnimations);
+    ui->animatedComboBox->addItem("Series Animations", QChart::SeriesAnimations);
+    ui->animatedComboBox->addItem("All Animations", QChart::AllAnimations);
+}
+
+void ChartForm::populateLegendBox()
+{
+    // add items to legend combobox
+    ui->legendComboBox->addItem("No Legend ", 0);
+    ui->legendComboBox->addItem("Legend Top", Qt::AlignTop);
+    ui->legendComboBox->addItem("Legend Bottom", Qt::AlignBottom);
+    ui->legendComboBox->addItem("Legend Left", Qt::AlignLeft);
+    ui->legendComboBox->addItem("Legend Right", Qt::AlignRight);
+}
+
+void ChartForm::updateUI()
+{
+    QChart::ChartTheme theme = static_cast<QChart::ChartTheme>(
+                ui->themeComboBox->itemData(ui->themeComboBox->currentIndex()).toInt());
+
+    if (mChart->theme() != theme) {
+        mChart->setTheme(theme);
+        // Set palette colors based on selected theme
+        QPalette pal = window()->palette();
+        if (theme == QChart::ChartThemeLight) {
+            pal.setColor(QPalette::Window, QRgb(0xf0f0f0));
+            pal.setColor(QPalette::WindowText, QRgb(0x404044));
+        } else if (theme == QChart::ChartThemeDark) {
+            pal.setColor(QPalette::Window, QRgb(0x121218));
+            pal.setColor(QPalette::WindowText, QRgb(0xd6d6d6));
+        } else if (theme == QChart::ChartThemeBlueCerulean) {
+            pal.setColor(QPalette::Window, QRgb(0x40434a));
+            pal.setColor(QPalette::WindowText, QRgb(0xd6d6d6));
+        } else if (theme == QChart::ChartThemeBrownSand) {
+            pal.setColor(QPalette::Window, QRgb(0x9e8965));
+            pal.setColor(QPalette::WindowText, QRgb(0x404044));
+        } else if (theme == QChart::ChartThemeBlueNcs) {
+            pal.setColor(QPalette::Window, QRgb(0x018bba));
+            pal.setColor(QPalette::WindowText, QRgb(0x404044));
+        } else if (theme == QChart::ChartThemeHighContrast) {
+            pal.setColor(QPalette::Window, QRgb(0xffab03));
+            pal.setColor(QPalette::WindowText, QRgb(0x181818));
+        } else if (theme == QChart::ChartThemeBlueIcy) {
+            pal.setColor(QPalette::Window, QRgb(0xcee7f0));
+            pal.setColor(QPalette::WindowText, QRgb(0x404044));
+        } else {
+            pal.setColor(QPalette::Window, QRgb(0xf0f0f0));
+            pal.setColor(QPalette::WindowText, QRgb(0x404044));
+        }
+        window()->setPalette(pal);
+    }
+
+    // Update antialiasing
+    bool checked = ui->antialiasCheckBox->isChecked();
+    mChartView->setRenderHint(QPainter::Antialiasing, checked);
+
+    // Update animation options
+    QChart::AnimationOptions options(
+                ui->animatedComboBox->itemData(ui->animatedComboBox->currentIndex()).toInt());
+    if (mChart->animationOptions() != options) {
+        mChart->setAnimationOptions(options);
+    }
+
+    // Update legend alignment
+    Qt::Alignment alignment(
+                ui->legendComboBox->itemData(ui->legendComboBox->currentIndex()).toInt());
+
+    if (!alignment) {
+        mChart->legend()->hide();
+        disconnectMarkers();
+    } else {
+        mChart->legend()->setAlignment(alignment);
+        mChart->legend()->show();
+        connectMarkers();
+    }
+}
+
+void ChartForm::editChart()
+{
+    // 显示编辑区
+    ui->tabWidget->setVisible(!ui->tabWidget->isVisible());
+}
+
+void ChartForm::clearChart()
+{
+    QMessageBox msgBox;
+    msgBox.setText("Warning");
+    msgBox.setInformativeText("<font color='black'>确定清除图中数据吗?</font>");
+    msgBox.setStandardButtons(QMessageBox::Yes | QMessageBox::Cancel);
+    msgBox.setDefaultButton(QMessageBox::Cancel);
+    int ret = msgBox.exec();
+    switch (ret) {
+    case QMessageBox::Yes:
+        removeAllSeries();
+        break;
+    case QMessageBox::Cancel:
+
+        break;
+    default:
+        break;
+    }
+}
+
+void ChartForm::on_led_title_returnPressed()
+{
+    QString title = ui->led_title->text();
+    mChart->setTitle(title);
+}
+
+void ChartForm::on_btn_titleFont_clicked()
+{
+    bool ok;
+    QFont font = QFontDialog::getFont(&ok, this);
+
+    if (ok) {
+        mChart->setTitleFont(font);
+    }
+}
+
+void ChartForm::on_btn_titleColor_clicked()
+{
+    QColor color = QColorDialog::getColor(Qt::white, this, tr("Color"));
+
+    if (color != Qt::white) {
+        mChart->setTitleBrush(QBrush(color));
+    }
+}
+
+void ChartForm::on_led_xAxisTitle_returnPressed()
+{
+    QString title = ui->led_xAxisTitle->text();
+    mChart->axisX()->setTitleText(title);
+}
+
+void ChartForm::on_dsb_xMinValue_valueChanged(double arg1)
+{
+    double max = ui->dsb_xMaxValue->value();
+    mChart->axisX()->setRange(arg1, max);
+}
+
+void ChartForm::on_dsb_xMaxValue_valueChanged(double arg1)
+{
+    double min = ui->dsb_xMinValue->value();
+    mChart->axisX()->setRange(min, arg1);
+}
+
+void ChartForm::on_led_yAxisTitle_returnPressed()
+{
+    QString title = ui->led_yAxisTitle->text();
+    mChart->axisY()->setTitleText(title);
+}
+
+void ChartForm::on_dsb_yMinValue_valueChanged(double arg1)
+{
+    double max = ui->dsb_yMaxValue->value();
+    mChart->axisY()->setRange(arg1, max);
+}
+
+void ChartForm::on_dsb_yMaxValue_valueChanged(double arg1)
+{
+    double min = ui->dsb_yMinValue->value();
+    mChart->axisY()->setRange(min, arg1);
+}
+
+void ChartForm::on_btn_dataColor_clicked()
+{
+    // 当前选择的行
+    int currentRow = ui->dataListWidget->currentRow();
+    if (currentRow < 0) {
+        QMessageBox::information(this, "提示", "<font color='black'>请选择有效数据</font>");
+        return;
+    }
+    // 选择颜色
+    QColor color = QColorDialog::getColor(Qt::white, this, tr("Color"));
+
+    if (color == Qt::white) {
+        return;
+    }
+
+    if (currentRow <= mSeries.length()) {
+        QXYSeries *series = mSeries[currentRow];
+        series->setColor(color);
+    }
+}
+
+void ChartForm::on_update_dataStyle(int id)
+{
+    // 当前选择的行
+    int currentRow = ui->dataListWidget->currentRow();
+    if (currentRow < 0) {
+        QMessageBox::information(this, "提示", "<font color='black'>请选择有效数据</font>");
+        return;
+    }
+
+//    int width = ui->sbx_lineWidth->value();
+
+//    QPen pen;
+//    pen.setWidth(width);
+    Qt::PenStyle penStyle;
+    switch (id) {
+    case 0:
+        penStyle = Qt::SolidLine;
+        break;
+    case 1:
+        penStyle = Qt::DashLine;
+        break;
+    case 2:
+        penStyle = Qt::DashDotLine;
+        break;
+    case 3:
+        penStyle = Qt::DashDotDotLine;
+        break;
+    default:
+        break;
+    }
+
+    if (currentRow <= mSeries.length()) {
+        QXYSeries *series = mSeries[currentRow];
+        QPen pen = series->pen();
+        pen.setStyle(penStyle);
+        series->setPen(pen);
+    }
+
+}
+
+void ChartForm::on_sbx_lineWidth_valueChanged(int arg1)
+{
+    // 当前选择的行
+    int currentRow = ui->dataListWidget->currentRow();
+    if (currentRow < 0) {
+        QMessageBox::information(this, "提示", "<font color='black'>请选择有效数据</font>");
+        return;
+    }
+
+    if (currentRow <= mSeries.length()) {
+        QXYSeries *series = mSeries[currentRow];
+        QPen pen = series->pen();
+        pen.setWidth(arg1);
+        series->setPen(pen);
+    }
+}
+
+void ChartForm::on_btn_hideAll_clicked()
+{
+    for (int i = 0; i < mSeries.length(); ++i) {
+        QListWidgetItem *item = ui->dataListWidget->item(i);
+        ui->dataListWidget->setCurrentRow(i);
+        QCheckBox* box = (QCheckBox*)(ui->dataListWidget->itemWidget(item));
+        box->setChecked(false);
+    }
+}
+
+void ChartForm::on_btn_showAll_clicked()
+{
+    for (int i = 0; i < mSeries.length(); ++i) {
+        QListWidgetItem *item = ui->dataListWidget->item(i);
+        ui->dataListWidget->setCurrentRow(i);
+        QCheckBox* box = (QCheckBox*)(ui->dataListWidget->itemWidget(item));
+        box->setChecked(true);
+    }
+}
+
+void ChartForm::changeSeriesVisiable(int check)
+{
+    int currentRow = ui->dataListWidget->currentRow();
+    if (currentRow < 0) {
+        QMessageBox::information(this, "提示", "<font color='black'>请选择有效数据</font>");
+        return;
+    }
+
+    if (currentRow <= mSeries.length()) {
+        QXYSeries *series = mSeries[currentRow];
+        series->setVisible(check);
+    }
+}
+
+void ChartForm::handleMarkerClicked()
+{
+    QLegendMarker* marker = qobject_cast<QLegendMarker*> (sender());
+    Q_ASSERT(marker);
+
+    switch (marker->type()) {
+    case QLegendMarker::LegendMarkerTypeXY: {
+        // Toggle visibility of series
+        marker->series()->setVisible(!marker->series()->isVisible());
+
+        // Turn legend marker back to visible, since hiding series also hides the marker
+        // and we don't want it to happen now.
+        marker->setVisible(true);
+        // Dim the marker, if series is not visible
+        qreal alpha = 1.0;
+
+        if (!marker->series()->isVisible())
+            alpha = 0.5;
+
+        QColor color;
+        QBrush brush = marker->labelBrush();
+        color = brush.color();
+        color.setAlphaF(alpha);
+        brush.setColor(color);
+        marker->setLabelBrush(brush);
+
+        brush = marker->brush();
+        color = brush.color();
+        color.setAlphaF(alpha);
+        brush.setColor(color);
+        marker->setBrush(brush);
+
+        QPen pen = marker->pen();
+        color = pen.color();
+        color.setAlphaF(alpha);
+        pen.setColor(color);
+        marker->setPen(pen);
+        break;
+    }
+    default:{
+        qDebug() << "Unknown marker type";
+        break;
+    }
+    }
+}
+
+void ChartForm::keepCallout()
+{
+    qDebug() << "KEEP";
+    mCallouts.append(mTooltip);
+    mTooltip = new Callout(mChart);
+}
+
+void ChartForm::tooltip(QPointF point, bool state)
+{
+    if (mTooltip == 0)
+        mTooltip = new Callout(mChart);
+
+    if (state) {
+        mTooltip->setText(QString("X: %1 \nY: %2 ").arg(point.x()).arg(point.y()));
+        mTooltip->setAnchor(point);
+        mTooltip->setZValue(11);
+        mTooltip->updateGeometry();
+        mTooltip->show();
+    } else {
+        mTooltip->hide();
+    }
+}
